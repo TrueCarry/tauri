@@ -7,7 +7,7 @@
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 
 use serde::Deserialize;
-use std::{fmt::Debug, sync::mpsc::Sender};
+use std::{fmt::Debug, path::PathBuf, sync::mpsc::Sender};
 use tauri_utils::Theme;
 use uuid::Uuid;
 
@@ -166,6 +166,7 @@ pub trait UserEvent: Debug + Clone + Send + 'static {}
 impl<T: Debug + Clone + Send + 'static> UserEvent for T {}
 
 /// Event triggered on the event loop run.
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum RunEvent<T: UserEvent> {
   /// Event loop is exiting.
@@ -189,6 +190,7 @@ pub enum RunEvent<T: UserEvent> {
   ///
   /// This event is useful as a place to put your code that should be run after all state-changing events have been handled and you want to do stuff (updating state, performing calculations, etc) that happens as the “main body” of your event loop.
   MainEventsCleared,
+  OpenFile(PathBuf),
   /// A custom event defined by the user.
   UserEvent(T),
 }
