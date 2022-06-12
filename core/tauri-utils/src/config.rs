@@ -455,6 +455,46 @@ fn default_allow_downgrades() -> bool {
   true
 }
 
+/// macOS-only. Corresponds to CFBundleTypeRole
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub enum BundleTypeRole {
+  /// CFBundleTypeRole.Editor. Files can be read and edited.
+  Editor,
+  /// CFBundleTypeRole.Viewer. Files can be read.
+  Viewer,
+  /// CFBundleTypeRole.Shell
+  Shell,
+  /// CFBundleTypeRole.QLGenerator
+  QLGenerator,
+  /// CFBundleTypeRole.None
+  None,
+}
+
+impl Display for BundleTypeRole {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Editor => write!(f, "Editor"),
+      Self::Viewer => write!(f, "Viewer"),
+      Self::Shell => write!(f, "Shell"),
+      Self::QLGenerator => write!(f, "QLGenerator"),
+      Self::None => write!(f, "None"),
+    }
+  }
+}
+
+/// File association
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub struct FileAssociation {
+  /// File extensions to associate with this app.
+  pub ext: Vec<String>,
+  /// The name. Default to ext[0]
+  pub name: Option<String>,
+  /// macOS-only The app’s role with respect to the type.
+  pub role: Option<BundleTypeRole>,
+}
+
 /// Configuration for tauri-bundler.
 #[skip_serializing_none]
 #[derive(Debug, Default, PartialEq, Eq, Clone, Deserialize, Serialize)]
@@ -487,6 +527,8 @@ pub struct BundleConfig {
   /// Should be one of the following:
   /// Business, DeveloperTool, Education, Entertainment, Finance, Game, ActionGame, AdventureGame, ArcadeGame, BoardGame, CardGame, CasinoGame, DiceGame, EducationalGame, FamilyGame, KidsGame, MusicGame, PuzzleGame, RacingGame, RolePlayingGame, SimulationGame, SportsGame, StrategyGame, TriviaGame, WordGame, GraphicsAndDesign, HealthcareAndFitness, Lifestyle, Medical, Music, News, Photography, Productivity, Reference, SocialNetworking, Sports, Travel, Utility, Video, Weather.
   pub category: Option<String>,
+  /// File associations to application.
+  pub file_associations: Option<Vec<FileAssociation>>,
   /// A short description of your application.
   pub short_description: Option<String>,
   /// A longer, multi-line description of the application.
@@ -2898,6 +2940,7 @@ mod build {
       let resources = quote!(None);
       let copyright = quote!(None);
       let category = quote!(None);
+      let file_associations = quote!(None);
       let short_description = quote!(None);
       let long_description = quote!(None);
       let appimage = quote!(Default::default());
@@ -2916,6 +2959,7 @@ mod build {
         resources,
         copyright,
         category,
+        file_associations,
         short_description,
         long_description,
         appimage,
@@ -3319,6 +3363,7 @@ mod test {
         resources: None,
         copyright: None,
         category: None,
+        file_associations: None,
         short_description: None,
         long_description: None,
         appimage: Default::default(),
