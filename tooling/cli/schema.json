@@ -957,6 +957,16 @@
             "$ref": "#/definitions/FileAssociation"
           }
         },
+        "protocols": {
+          "description": "URL protocol schemes.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Protocol"
+          }
+        },
         "shortDescription": {
           "description": "A short description of your application.",
           "type": [
@@ -1126,6 +1136,38 @@
         "QLGenerator",
         "None"
       ]
+    },
+    "Protocol": {
+      "description": "URL protocol scheme",
+      "type": "object",
+      "required": [
+        "name",
+        "schemes"
+      ],
+      "properties": {
+        "schemes": {
+          "description": "The schemas.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "description": "The name.",
+          "type": "string"
+        },
+        "role": {
+          "description": "macOS-only The app’s role with respect to the type.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BundleTypeRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     "AppImageConfig": {
       "description": "Configuration for AppImage bundles.",

@@ -207,6 +207,39 @@ fn create_info_plist(
     );
   }
 
+  if let Some(protocols) = settings.protocols() {
+    plist.insert(
+      "CFBundleURLTypes".into(),
+      plist::Value::Array(protocols.iter().map(|protocol| {
+        let mut dict = plist::Dictionary::new();
+        dict.insert(
+          "CFBundleURLName".into(),
+          protocol.name.to_string().into(),
+        );
+        dict.insert(
+          "CFBundleURLSchemes".into(),
+          plist::Value::Array(
+            protocol
+              .schemes
+              .iter()
+              .map(|scheme| scheme.to_string().into())
+              .collect(),
+          ),
+        );
+        dict.insert(
+          "CFBundleTypeRole".into(),
+          protocol
+            .role
+            .as_ref()
+            .unwrap_or(&BundleTypeRole::Editor)
+            .to_string()
+            .into(),
+        );
+        plist::Value::Dictionary(dict)
+      }).collect()),
+    );
+  }
+
   plist.insert("LSRequiresCarbon".into(), true.into());
   plist.insert("NSHighResolutionCapable".into(), true.into());
   if let Some(copyright) = settings.copyright_string() {

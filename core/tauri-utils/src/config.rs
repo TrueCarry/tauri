@@ -496,6 +496,17 @@ pub struct FileAssociation {
   /// Linux-only. The mime-type. e.g. 'image/png'
   pub mime_type: Option<Vec<String>>,
 }
+/// URL protocol scheme
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub struct Protocol {
+  /// The schemas.
+  pub schemes: Vec<String>,
+  /// The name.
+  pub name: String,
+  /// macOS-only The app’s role with respect to the type.
+  pub role: Option<BundleTypeRole>,
+}
 
 /// Configuration for tauri-bundler.
 #[skip_serializing_none]
@@ -531,6 +542,8 @@ pub struct BundleConfig {
   pub category: Option<String>,
   /// File associations to application.
   pub file_associations: Option<Vec<FileAssociation>>,
+  /// URL protocol schemes.
+  pub protocols: Option<Vec<Protocol>>,
   /// A short description of your application.
   pub short_description: Option<String>,
   /// A longer, multi-line description of the application.
@@ -2943,6 +2956,7 @@ mod build {
       let copyright = quote!(None);
       let category = quote!(None);
       let file_associations = quote!(None);
+      let protocols = quote!(None);
       let short_description = quote!(None);
       let long_description = quote!(None);
       let appimage = quote!(Default::default());
@@ -2962,6 +2976,7 @@ mod build {
         copyright,
         category,
         file_associations,
+        protocols,
         short_description,
         long_description,
         appimage,
@@ -3366,6 +3381,7 @@ mod test {
         copyright: None,
         category: None,
         file_associations: None,
+        protocols: None,
         short_description: None,
         long_description: None,
         appimage: Default::default(),

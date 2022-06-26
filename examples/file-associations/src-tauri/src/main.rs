@@ -9,9 +9,21 @@
 
 use std::env;
 use tauri::{api::dialog::MessageDialogBuilder, Manager};
+use url::Url;
 
 fn handle_open_files(files: &[String]) {
   MessageDialogBuilder::new("Files open", format!("You opened: {:?}", files)).show(|_| {});
+}
+
+fn handle_open_urls(urls: &[&Url]) {
+  MessageDialogBuilder::new(
+    "URLs open",
+    format!(
+      "You opened: {:?}",
+      urls.iter().map(|url| url.to_string()).collect::<Vec<_>>()
+    ),
+  )
+  .show(|_| {});
 }
 
 fn main() {
@@ -22,19 +34,30 @@ fn main() {
         let urls: Vec<_> = serde_json::from_str::<Vec<String>>(f.payload().unwrap())
           .unwrap()
           .iter()
-          .map(|s| url::Url::parse(s).unwrap())
+          .map(|s| Url::parse(s).unwrap())
           .collect();
 
         // filter out non-file:// urls, you may need to handle them by another method
-        let file_paths: Vec<_> = urls.iter().filter_map(|url| {
-          if url.scheme() == "file" {
-            Some(url.path().into())
-          } else {
-            None
-          }
-        }).collect();
+        let file_paths: Vec<_> = urls
+          .iter()
+          .filter_map(|url| {
+            if url.scheme() == "file" {
+              Some(url.path().into())
+            } else {
+              None
+            }
+          })
+          .collect();
 
-        handle_open_files(&file_paths);
+        let non_file_urls: Vec<_> = urls.iter().filter(|url| url.scheme() != "file").collect();
+
+        if !file_paths.is_empty() {
+          handle_open_files(&file_paths);
+        }
+
+        if !non_file_urls.is_empty() {
+          handle_open_urls(&non_file_urls);
+        }
       });
 
       // Windows and Linux

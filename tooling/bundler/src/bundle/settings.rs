@@ -5,7 +5,7 @@
 use super::category::AppCategory;
 use crate::bundle::{common, platform::target_triple};
 use tauri_utils::{
-  config::{BundleType, FileAssociation},
+  config::{BundleType, FileAssociation, Protocol},
   resources::{external_binaries, ResourcePaths},
 };
 
@@ -298,6 +298,8 @@ pub struct BundleSettings {
   pub category: Option<AppCategory>,
   /// the file associations
   pub file_associations: Option<Vec<FileAssociation>>,
+  /// the URL protocol schemes
+  pub protocols: Option<Vec<Protocol>>,
   /// the app's short description.
   pub short_description: Option<String>,
   /// the app's long description.
@@ -694,6 +696,11 @@ impl Settings {
   /// Return file associations.
   pub fn file_associations(&self) -> &Option<Vec<FileAssociation>> {
     &self.bundle_settings.file_associations
+  }
+
+  /// Return file associations.
+  pub fn protocols(&self) -> &Option<Vec<Protocol>> {
+    &self.bundle_settings.protocols
   }
 
   /// Returns the app's short description.
