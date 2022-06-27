@@ -1080,7 +1080,7 @@
       ],
       "properties": {
         "ext": {
-          "description": "File extensions to associate with this app.",
+          "description": "File extensions to associate with this app. e.g. 'png'",
           "type": "array",
           "items": {
             "type": "string"
@@ -1094,7 +1094,7 @@
           ]
         },
         "role": {
-          "description": "macOS-only The app’s role with respect to the type.",
+          "description": "macOS-only. The app’s role with respect to the type.",
           "anyOf": [
             {
               "$ref": "#/definitions/BundleTypeRole"
@@ -1103,6 +1103,16 @@
               "type": "null"
             }
           ]
+        },
+        "mime_type": {
+          "description": "Linux-only. The mime-type. e.g. 'image/png'",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
