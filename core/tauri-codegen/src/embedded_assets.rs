@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+use base64::Engine;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use sha2::{Digest, Sha256};
@@ -181,9 +182,10 @@ impl CspHashes {
           })?,
         );
         let hash = hasher.finalize();
-        self
-          .scripts
-          .push(format!("'sha256-{}'", base64::encode(hash)));
+        self.scripts.push(format!(
+          "'sha256-{}'",
+          base64::engine::general_purpose::STANDARD.encode(hash)
+        ));
       }
     }
 
@@ -343,14 +345,14 @@ impl EmbeddedAssets {
 
       let mut hex = String::with_capacity(2 * bytes.len());
       for b in bytes {
-        write!(hex, "{:02x}", b).map_err(EmbeddedAssetsError::Hex)?;
+        write!(hex, "{b:02x}").map_err(EmbeddedAssetsError::Hex)?;
       }
       hex
     };
 
     // use the content hash to determine filename, keep extensions that exist
     let out_path = if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-      out_dir.join(format!("{}.{}", hash, ext))
+      out_dir.join(format!("{hash}.{ext}"))
     } else {
       out_dir.join(hash)
     };

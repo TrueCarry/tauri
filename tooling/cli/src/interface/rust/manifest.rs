@@ -8,6 +8,8 @@ use crate::helpers::{
 };
 
 use anyhow::Context;
+use itertools::Itertools;
+use log::info;
 use toml_edit::{Array, Document, InlineTable, Item, Table, Value};
 
 use std::{
@@ -54,7 +56,7 @@ impl Manifest {
     let mut all_enabled_features: Vec<String> = self
       .tauri_features
       .iter()
-      .map(|f| format!("tauri/{}", f))
+      .map(|f| format!("tauri/{f}"))
       .collect();
 
     let manifest_features = self.features();
@@ -82,11 +84,11 @@ fn get_enabled_features(list: &HashMap<String, Vec<String>>, feature: &str) -> V
   f
 }
 
-fn read_manifest(manifest_path: &Path) -> crate::Result<Document> {
+pub fn read_manifest(manifest_path: &Path) -> crate::Result<Document> {
   let mut manifest_str = String::new();
 
   let mut manifest_file = File::open(manifest_path)
-    .with_context(|| format!("failed to open `{:?}` file", manifest_path))?;
+    .with_context(|| format!("failed to open `{manifest_path:?}` file"))?;
   manifest_file.read_to_string(&mut manifest_str)?;
 
   let manifest: Document = manifest_str
@@ -113,6 +115,16 @@ fn write_features(
   features: &mut HashSet<String>,
 ) -> crate::Result<bool> {
   let item = dependencies.entry(dependency_name).or_insert(Item::None);
+
+  // do not rewrite if dependency uses workspace inheritance
+  if item
+    .get("workspace")
+    .and_then(|v| v.as_bool())
+    .unwrap_or_default()
+  {
+    info!("`{dependency_name}` dependency has workspace inheritance enabled. The features array won't be automatically rewritten. Expected features: [{}]", features.iter().join(", "));
+    return Ok(false);
+  }
 
   if let Some(dep) = item.as_table_mut() {
     let manifest_features = dep.entry("features").or_insert(Item::None);
@@ -164,10 +176,7 @@ fn write_features(
       }
       Value::String(version) => {
         let mut def = InlineTable::default();
-        def.get_or_insert(
-          "version",
-          version.to_string().replace('\"', "").replace(' ', ""),
-        );
+        def.get_or_insert("version", version.to_string().replace(['\"', ' '], ""));
         def.get_or_insert("features", Value::Array(toml_array(features)));
         *dep = Value::InlineTable(def);
       }

@@ -55,7 +55,7 @@ pub enum WindowUrl {
 impl fmt::Display for WindowUrl {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Self::External(url) => write!(f, "{}", url),
+      Self::External(url) => write!(f, "{url}"),
       Self::App(path) => write!(f, "{}", path.display()),
     }
   }
@@ -78,6 +78,8 @@ pub enum BundleType {
   AppImage,
   /// The Microsoft Installer bundle (.msi).
   Msi,
+  /// The NSIS bundle (.exe).
+  Nsis,
   /// The macOS application bundle (.app).
   App,
   /// The Apple Disk Image bundle (.dmg).
@@ -95,6 +97,7 @@ impl Display for BundleType {
         Self::Deb => "deb",
         Self::AppImage => "appimage",
         Self::Msi => "msi",
+        Self::Nsis => "nsis",
         Self::App => "app",
         Self::Dmg => "dmg",
         Self::Updater => "updater",
@@ -122,10 +125,11 @@ impl<'de> Deserialize<'de> for BundleType {
       "deb" => Ok(Self::Deb),
       "appimage" => Ok(Self::AppImage),
       "msi" => Ok(Self::Msi),
+      "nsis" => Ok(Self::Nsis),
       "app" => Ok(Self::App),
       "dmg" => Ok(Self::Dmg),
       "updater" => Ok(Self::Updater),
-      _ => Err(DeError::custom(format!("unknown bundle target '{}'", s))),
+      _ => Err(DeError::custom(format!("unknown bundle target '{s}'"))),
     }
   }
 }
@@ -223,7 +227,7 @@ impl<'de> Deserialize<'de> for BundleTarget {
 
     match BundleTargetInner::deserialize(deserializer)? {
       BundleTargetInner::All(s) if s.to_lowercase() == "all" => Ok(Self::All),
-      BundleTargetInner::All(t) => Err(DeError::custom(format!("invalid bundle type {}", t))),
+      BundleTargetInner::All(t) => Err(DeError::custom(format!("invalid bundle type {t}"))),
       BundleTargetInner::List(l) => Ok(Self::List(l)),
       BundleTargetInner::One(t) => Ok(Self::One(t)),
     }
@@ -416,6 +420,71 @@ pub struct WixConfig {
   pub dialog_image_path: Option<PathBuf>,
 }
 
+/// Configuration for the Installer bundle using NSIS.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NsisConfig {
+  /// The path to the license file to render on the installer.
+  pub license: Option<PathBuf>,
+  /// The path to a bitmap file to display on the header of installers pages.
+  ///
+  /// The recommended dimensions are 150px x 57px.
+  #[serde(alias = "header-image")]
+  pub header_image: Option<PathBuf>,
+  /// The path to a bitmap file for the Welcome page and the Finish page.
+  ///
+  /// The recommended dimensions are 164px x 314px.
+  #[serde(alias = "sidebar-image")]
+  pub sidebar_image: Option<PathBuf>,
+  /// The path to an icon file used as the installer icon.
+  #[serde(alias = "install-icon")]
+  pub installer_icon: Option<PathBuf>,
+  /// Whether the installation will be for all users or just the current user.
+  #[serde(default, alias = "install-mode")]
+  pub install_mode: NSISInstallerMode,
+  /// A list of installer languages.
+  /// By default the OS language is used. If the OS language is not in the list of languages, the first language will be used.
+  /// To allow the user to select the language, set `display_language_selector` to `true`.
+  ///
+  /// See <https://github.com/kichik/nsis/tree/9465c08046f00ccb6eda985abbdbf52c275c6c4d/Contrib/Language%20files> for the complete list of languages.
+  pub languages: Option<Vec<String>>,
+  /// Whether to display a language selector dialog before the installer and uninstaller windows are rendered or not.
+  /// By default the OS language is selected, with a fallback to the first language in the `languages` array.
+  #[serde(default, alias = "display-language-selector")]
+  pub display_language_selector: bool,
+}
+
+/// Install Modes for the NSIS installer.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
+pub enum NSISInstallerMode {
+  /// Default mode for the installer.
+  ///
+  /// Install the app by default in a directory that doesn't require Administrator access.
+  ///
+  /// Installer metadata will be saved under the `HKCU` registry path.
+  CurrentUser,
+  /// Install the app by default in the `Program Files` folder directory requires Administrator
+  /// access for the installation.
+  ///
+  /// Installer metadata will be saved under the `HKLM` registry path.
+  PerMachine,
+  /// Combines both modes and allows the user to choose at install time
+  /// whether to install for the current user or per machine. Note that this mode
+  /// will require Administrator access even if the user wants to install it for the current user only.
+  ///
+  /// Installer metadata will be saved under the `HKLM` or `HKCU` registry path based on the user's choice.
+  Both,
+}
+
+impl Default for NSISInstallerMode {
+  fn default() -> Self {
+    Self::CurrentUser
+  }
+}
+
 /// Install modes for the Webview2 runtime.
 /// Note that for the updater bundle [`Self::DownloadBootstrapper`] is used.
 ///
@@ -512,6 +581,8 @@ pub struct WindowsConfig {
   pub allow_downgrades: bool,
   /// Configuration for the MSI generated with WiX.
   pub wix: Option<WixConfig>,
+  /// Configuration for the installer generated with NSIS.
+  pub nsis: Option<NsisConfig>,
 }
 
 impl Default for WindowsConfig {
@@ -525,6 +596,7 @@ impl Default for WindowsConfig {
       webview_fixed_runtime_path: None,
       allow_downgrades: default_allow_downgrades(),
       wix: None,
+      nsis: None,
     }
   }
 }
@@ -584,7 +656,7 @@ pub struct BundleConfig {
   /// Whether Tauri should bundle your application or just output the executable.
   #[serde(default)]
   pub active: bool,
-  /// The bundle targets, currently supports ["deb", "appimage", "msi", "app", "dmg", "updater"] or "all".
+  /// The bundle targets, currently supports ["deb", "appimage", "nsis", "msi", "app", "dmg", "updater"] or "all".
   #[serde(default)]
   pub targets: BundleTarget,
   /// The application identifier in reverse domain name notation (e.g. `com.tauri.example`).
@@ -882,7 +954,7 @@ pub struct WindowConfig {
   /// Whether the window starts as fullscreen or not.
   #[serde(default)]
   pub fullscreen: bool,
-  /// Whether the window will be initially hidden or focused.
+  /// Whether the window will be initially focused or not.
   #[serde(default = "default_focus")]
   pub focus: bool,
   /// Whether the window is transparent or not.
@@ -903,7 +975,10 @@ pub struct WindowConfig {
   /// Whether the window should always be on top of other windows.
   #[serde(default, alias = "always-on-top")]
   pub always_on_top: bool,
-  /// Whether or not the window icon should be added to the taskbar.
+  /// Prevents the window contents from being captured by other apps.
+  #[serde(default, alias = "content-protected")]
+  pub content_protected: bool,
+  /// If `true`, hides the window icon from the taskbar on Windows and Linux.
   #[serde(default, alias = "skip-taskbar")]
   pub skip_taskbar: bool,
   /// The initial window theme. Defaults to the system theme. Only implemented on Windows and macOS 10.14+.
@@ -914,6 +989,21 @@ pub struct WindowConfig {
   /// If `true`, sets the window title to be hidden on macOS.
   #[serde(default, alias = "hidden-title")]
   pub hidden_title: bool,
+  /// Whether clicking an inactive window also clicks through to the webview on macOS.
+  #[serde(default, alias = "accept-first-mouse")]
+  pub accept_first_mouse: bool,
+  /// Defines the window [tabbing identifier] for macOS.
+  ///
+  /// Windows with matching tabbing identifiers will be grouped together.
+  /// If the tabbing identifier is not set, automatic tabbing will be disabled.
+  ///
+  /// [tabbing identifier]: <https://developer.apple.com/documentation/appkit/nswindow/1644704-tabbingidentifier>
+  #[serde(default, alias = "tabbing-identifier")]
+  pub tabbing_identifier: Option<String>,
+  /// Defines additional browser arguments on Windows. By default wry passes `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`
+  /// so if you use this method, you also need to disable these components by yourself if you want.
+  #[serde(default, alias = "additional-browser-args")]
+  pub additional_browser_args: Option<String>,
 }
 
 impl Default for WindowConfig {
@@ -941,10 +1031,14 @@ impl Default for WindowConfig {
       visible: default_visible(),
       decorations: default_decorations(),
       always_on_top: false,
+      content_protected: false,
       skip_taskbar: false,
       theme: None,
       title_bar_style: Default::default(),
       hidden_title: false,
+      accept_first_mouse: false,
+      tabbing_identifier: None,
+      additional_browser_args: None,
     }
   }
 }
@@ -1016,7 +1110,7 @@ impl CspDirectiveSources {
   /// Whether the given source is configured on this directive or not.
   pub fn contains(&self, source: &str) -> bool {
     match self {
-      Self::Inline(s) => s.contains(&format!("{} ", source)) || s.contains(&format!(" {}", source)),
+      Self::Inline(s) => s.contains(&format!("{source} ")) || s.contains(&format!(" {source}")),
       Self::List(l) => l.contains(&source.into()),
     }
   }
@@ -1082,7 +1176,7 @@ impl From<Csp> for HashMap<String, CspDirectiveSources> {
 impl Display for Csp {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Self::Policy(s) => write!(f, "{}", s),
+      Self::Policy(s) => write!(f, "{s}"),
       Self::DirectiveMap(m) => {
         let len = m.len();
         let mut i = 0;
@@ -1360,6 +1454,9 @@ pub struct WindowAllowlistConfig {
   /// Allows setting the always_on_top flag of the window.
   #[serde(default, alias = "set-always-on-top")]
   pub set_always_on_top: bool,
+  /// Allows preventing the window contents from being captured by other apps.
+  #[serde(default, alias = "set-content-protected")]
+  pub set_content_protected: bool,
   /// Allows setting the window size.
   #[serde(default, alias = "set-size")]
   pub set_size: bool,
@@ -1425,6 +1522,7 @@ impl Allowlist for WindowAllowlistConfig {
       close: true,
       set_decorations: true,
       set_always_on_top: true,
+      set_content_protected: false,
       set_size: true,
       set_min_size: true,
       set_max_size: true,
@@ -1474,6 +1572,12 @@ impl Allowlist for WindowAllowlistConfig {
         features,
         set_always_on_top,
         "window-set-always-on-top"
+      );
+      check_feature!(
+        self,
+        features,
+        set_content_protected,
+        "window-set-content-protected"
       );
       check_feature!(self, features, set_size, "window-set-size");
       check_feature!(self, features, set_min_size, "window-set-min-size");
@@ -1630,7 +1734,7 @@ pub struct ShellAllowlistScope(pub Vec<ShellAllowedCommand>);
 pub enum ShellAllowlistOpen {
   /// If the shell open API should be enabled.
   ///
-  /// If enabled, the default validation regex (`^https?://`) is used.
+  /// If enabled, the default validation regex (`^((mailto:\w+)|(tel:\w+)|(https?://\w+)).+`) is used.
   Flag(bool),
 
   /// Enable the shell open API, with a custom regex that the opened path must match against.
@@ -2093,7 +2197,16 @@ impl Allowlist for AppAllowlistConfig {
   }
 }
 
-/// Allowlist configuration.
+/// Allowlist configuration. The allowlist is a translation of the [Cargo allowlist features](https://docs.rs/tauri/latest/tauri/#cargo-allowlist-features).
+///
+/// # Notes
+///
+/// - Endpoints that don't have their own allowlist option are enabled by default.
+/// - There is only "opt-in", no "opt-out". Setting an option to `false` has no effect.
+///
+/// # Examples
+///
+/// - * [`"app-all": true`](https://tauri.app/v1/api/config/#appallowlistconfig.all) will make the [hide](https://tauri.app/v1/api/js/app#hide) endpoint be available regardless of whether `hide` is set to `false` or `true` in the allowlist.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2178,6 +2291,7 @@ impl Allowlist for AllowlistConfig {
       features.extend(self.protocol.to_features());
       features.extend(self.process.to_features());
       features.extend(self.clipboard.to_features());
+      features.extend(self.app.to_features());
       features
     }
   }
@@ -2192,7 +2306,6 @@ pub enum PatternKind {
   /// Brownfield pattern.
   Brownfield,
   /// Isolation pattern. Recommended for security purposes.
-  #[cfg(feature = "isolation")]
   Isolation {
     /// The dir containing the index.html file that contains the secure isolation application.
     dir: PathBuf,
@@ -2270,7 +2383,6 @@ impl TauriConfig {
     if self.macos_private_api {
       features.push("macos-private-api");
     }
-    #[cfg(feature = "isolation")]
     if let PatternKind::Isolation { .. } = self.pattern {
       features.push("isolation");
     }
@@ -2319,7 +2431,7 @@ pub enum WindowsUpdateInstallMode {
   /// Specifies there's a basic UI during the installation process, including a final dialog box at the end.
   BasicUi,
   /// The quiet mode means there's no user interaction required.
-  /// Requires admin privileges if the installer does.
+  /// Requires admin privileges if the installer does (WiX).
   Quiet,
   /// Specifies unattended mode, which means the installation only shows a progress bar.
   Passive,
@@ -2378,8 +2490,7 @@ impl<'de> Deserialize<'de> for WindowsUpdateInstallMode {
       "quiet" => Ok(Self::Quiet),
       "passive" => Ok(Self::Passive),
       _ => Err(DeError::custom(format!(
-        "unknown update install mode '{}'",
-        s
+        "unknown update install mode '{s}'"
       ))),
     }
   }
@@ -2391,6 +2502,9 @@ impl<'de> Deserialize<'de> for WindowsUpdateInstallMode {
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdaterWindowsConfig {
+  /// Additional arguments given to the NSIS or WiX installer.
+  #[serde(default, alias = "installer-args")]
+  pub installer_args: Vec<String>,
   /// The installation mode for the update on Windows. Defaults to `passive`.
   #[serde(default, alias = "install-mode")]
   pub install_mode: WindowsUpdateInstallMode,
@@ -2523,7 +2637,7 @@ pub enum AppUrl {
 impl std::fmt::Display for AppUrl {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::Url(url) => write!(f, "{}", url),
+      Self::Url(url) => write!(f, "{url}"),
       Self::Files(files) => write!(f, "{}", serde_json::to_string(files).unwrap()),
     }
   }
@@ -2662,9 +2776,9 @@ impl<'d> serde::Deserialize<'d> for PackageVersion {
         let path = PathBuf::from(value);
         if path.exists() {
           let json_str = read_to_string(&path)
-            .map_err(|e| DeError::custom(format!("failed to read version JSON file: {}", e)))?;
+            .map_err(|e| DeError::custom(format!("failed to read version JSON file: {e}")))?;
           let package_json: serde_json::Value = serde_json::from_str(&json_str)
-            .map_err(|e| DeError::custom(format!("failed to read version JSON file: {}", e)))?;
+            .map_err(|e| DeError::custom(format!("failed to read version JSON file: {e}")))?;
           if let Some(obj) = package_json.as_object() {
             let version = obj
               .get("version")
@@ -3014,7 +3128,7 @@ mod build {
 
       tokens.append_all(match self {
         Self::App(path) => {
-          let path = path_buf_lit(&path);
+          let path = path_buf_lit(path);
           quote! { #prefix::App(#path) }
         }
         Self::External(url) => {
@@ -3072,10 +3186,14 @@ mod build {
       let visible = self.visible;
       let decorations = self.decorations;
       let always_on_top = self.always_on_top;
+      let content_protected = self.content_protected;
       let skip_taskbar = self.skip_taskbar;
       let theme = opt_lit(self.theme.as_ref());
       let title_bar_style = &self.title_bar_style;
       let hidden_title = self.hidden_title;
+      let accept_first_mouse = self.accept_first_mouse;
+      let tabbing_identifier = opt_str_lit(self.tabbing_identifier.as_ref());
+      let additional_browser_args = opt_str_lit(self.additional_browser_args.as_ref());
 
       literal_struct!(
         tokens,
@@ -3102,10 +3220,14 @@ mod build {
         visible,
         decorations,
         always_on_top,
+        content_protected,
         skip_taskbar,
         theme,
         title_bar_style,
-        hidden_title
+        hidden_title,
+        accept_first_mouse,
+        tabbing_identifier,
+        additional_browser_args
       );
     }
   }
@@ -3213,6 +3335,8 @@ mod build {
 
       tokens.append_all(match self {
         Self::Brownfield => quote! { #prefix::Brownfield },
+        #[cfg(not(feature = "isolation"))]
+        Self::Isolation { dir: _ } => quote! { #prefix::Brownfield },
         #[cfg(feature = "isolation")]
         Self::Isolation { dir } => {
           let dir = path_buf_lit(dir);
@@ -3238,7 +3362,7 @@ mod build {
           quote! { #prefix::OfflineInstaller { silent: #silent } }
         }
         Self::FixedRuntime { path } => {
-          let path = path_buf_lit(&path);
+          let path = path_buf_lit(path);
           quote! { #prefix::FixedRuntime { path: #path } }
         }
       })
@@ -3361,7 +3485,8 @@ mod build {
   impl ToTokens for UpdaterWindowsConfig {
     fn to_tokens(&self, tokens: &mut TokenStream) {
       let install_mode = &self.install_mode;
-      literal_struct!(tokens, UpdaterWindowsConfig, install_mode);
+      let installer_args = vec_lit(&self.installer_args, str_lit);
+      literal_struct!(tokens, UpdaterWindowsConfig, install_mode, installer_args);
     }
   }
 

@@ -96,7 +96,7 @@ async fn handler<T>(req: Request<T>, state: Arc<State>) -> impl IntoResponse {
     uri.strip_prefix('/').unwrap_or(&uri)
   };
 
-  let file = std::fs::read(state.serve_dir.join(&uri))
+  let file = std::fs::read(state.serve_dir.join(uri))
     .or_else(|_| std::fs::read(state.serve_dir.join(format!("{}.html", &uri))))
     .or_else(|_| std::fs::read(state.serve_dir.join(format!("{}/index.html", &uri))))
     .or_else(|_| std::fs::read(state.serve_dir.join("index.html")));
@@ -126,7 +126,7 @@ async fn handler<T>(req: Request<T>, state: Arc<State>) -> impl IntoResponse {
           head.prepend(script_el);
         });
 
-        f = document.to_string().as_bytes().to_vec();
+        f = tauri_utils::html::serialize_node(&document);
       }
 
       (StatusCode::OK, [(CONTENT_TYPE, mime_type)], f)
